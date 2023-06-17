@@ -4,6 +4,7 @@ pragma solidity ^0.8.6;
 import "./Functions.sol";
 import "../interfaces/FunctionsClientInterface.sol";
 import "../interfaces/FunctionsOracleInterface.sol";
+import "forge-std/Script.sol";
 
 /**
  * @title The Chainlink Functions client contract
@@ -38,12 +39,19 @@ abstract contract FunctionsClient is FunctionsClientInterface {
      * @param gasLimit gas limit for the fulfillment callback
      * @return billedCost Cost in Juels (1e18) of LINK
      */
-    function estimateCost(Functions.Request memory req, uint64 subscriptionId, uint32 gasLimit, uint256 gasPrice)
-        public
-        view
-        returns (uint96)
-    {
-        return s_oracle.estimateCost(subscriptionId, Functions.encodeCBOR(req), gasLimit, gasPrice);
+    function estimateCost(
+        Functions.Request memory req,
+        uint64 subscriptionId,
+        uint32 gasLimit,
+        uint256 gasPrice
+    ) public view returns (uint96) {
+        return
+            s_oracle.estimateCost(
+                subscriptionId,
+                Functions.encodeCBOR(req),
+                gasLimit,
+                gasPrice
+            );
     }
 
     /**
@@ -53,11 +61,16 @@ abstract contract FunctionsClient is FunctionsClientInterface {
      * @param gasLimit gas limit for the fulfillment callback
      * @return requestId The generated request ID
      */
-    function sendRequest(Functions.Request memory req, uint64 subscriptionId, uint32 gasLimit)
-        internal
-        returns (bytes32)
-    {
-        bytes32 requestId = s_oracle.sendRequest(subscriptionId, Functions.encodeCBOR(req), gasLimit);
+    function sendRequest(
+        Functions.Request memory req,
+        uint64 subscriptionId,
+        uint32 gasLimit
+    ) internal returns (bytes32) {
+        bytes32 requestId = s_oracle.sendRequest(
+            subscriptionId,
+            Functions.encodeCBOR(req),
+            gasLimit
+        );
         s_pendingRequests[requestId] = s_oracle.getRegistry();
         emit RequestSent(requestId);
         return requestId;
@@ -70,16 +83,20 @@ abstract contract FunctionsClient is FunctionsClientInterface {
      * @param err Aggregated error from the user code or from the execution pipeline
      * Either response or error parameter will be set, but never both
      */
-    function fulfillRequest(bytes32 requestId, bytes memory response, bytes memory err) internal virtual;
+    function fulfillRequest(
+        bytes32 requestId,
+        bytes memory response,
+        bytes memory err
+    ) internal virtual;
 
     /**
      * @inheritdoc FunctionsClientInterface
      */
-    function handleOracleFulfillment(bytes32 requestId, bytes memory response, bytes memory err)
-        external
-        override
-        recordChainlinkFulfillment(requestId)
-    {
+    function handleOracleFulfillment(
+        bytes32 requestId,
+        bytes memory response,
+        bytes memory err
+    ) external override recordChainlinkFulfillment(requestId) {
         fulfillRequest(requestId, response, err);
     }
 
@@ -105,7 +122,10 @@ abstract contract FunctionsClient is FunctionsClientInterface {
      * @param oracleAddress The address of the oracle contract that will fulfill the request
      * @param requestId The request ID used for the response
      */
-    function addExternalRequest(address oracleAddress, bytes32 requestId) internal notPendingRequest(requestId) {
+    function addExternalRequest(
+        address oracleAddress,
+        bytes32 requestId
+    ) internal notPendingRequest(requestId) {
         s_pendingRequests[requestId] = oracleAddress;
     }
 

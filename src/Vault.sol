@@ -10,9 +10,8 @@ import {Coin} from "./Coin.sol";
 import "./Portfolio.sol";
 
 /**
- * @dev Vault contract manages a tokenized debt position.
- *
- * This contract provides the means for an account to manage their debt position
+ * @title Vault contract manages a tokenized debt position.
+ * @notice This contract provides the means for an account to manage their debt position
  * through enforcing adequate collatoralization while withdrawing debt tokens.
  * Can also update the rebalancing strategy from the collateral basket portfolio
  */

@@ -14,6 +14,7 @@ import "../AuthorizedReceiver.sol";
 import "../vendor/openzeppelin-solidity/v.4.8.0/contracts/utils/SafeCast.sol";
 import "lib/openzeppelin-contracts-upgradeable/contracts/security/PausableUpgradeable.sol";
 import "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
+import "forge-std/Script.sol";
 
 /**
  * @title Functions Billing Registry contract
@@ -46,7 +47,10 @@ contract FunctionsBillingRegistry is
     error MustBeSubOwner(address owner);
     error PendingRequestExists();
     error MustBeRequestedOwner(address proposedOwner);
-    error BalanceInvariantViolated(uint256 internalBalance, uint256 externalBalance); // Should never happen
+    error BalanceInvariantViolated(
+        uint256 internalBalance,
+        uint256 externalBalance
+    ); // Should never happen
 
     event FundsRecovered(address to, uint256 amount);
 
@@ -70,9 +74,12 @@ contract FunctionsBillingRegistry is
     }
     // Note a nonce of 0 indicates an the consumer is not assigned to that subscription.
 
-    mapping(address => mapping(uint64 => uint64)) /* consumer */ /* subscriptionId */ /* nonce */ private s_consumers;
-    mapping(uint64 => SubscriptionConfig) /* subscriptionId */ /* subscriptionConfig */ private s_subscriptionConfigs;
-    mapping(uint64 => Subscription) /* subscriptionId */ /* subscription */ private s_subscriptions;
+    mapping(address => mapping(uint64 => uint64)) /* consumer */ /* subscriptionId */ /* nonce */
+        private s_consumers;
+    mapping(uint64 => SubscriptionConfig) /* subscriptionId */ /* subscriptionConfig */
+        private s_subscriptionConfigs;
+    mapping(uint64 => Subscription) /* subscriptionId */ /* subscription */
+        private s_subscriptions;
     // We make the sub count public so that its possible to
     // get all the current subscriptions via getSubscription.
     uint64 private s_currentsubscriptionId;
@@ -83,19 +90,42 @@ contract FunctionsBillingRegistry is
     uint96 private s_totalBalance;
 
     event SubscriptionCreated(uint64 indexed subscriptionId, address owner);
-    event SubscriptionFunded(uint64 indexed subscriptionId, uint256 oldBalance, uint256 newBalance);
-    event SubscriptionConsumerAdded(uint64 indexed subscriptionId, address consumer);
-    event SubscriptionConsumerRemoved(uint64 indexed subscriptionId, address consumer);
-    event SubscriptionCanceled(uint64 indexed subscriptionId, address to, uint256 amount);
-    event SubscriptionOwnerTransferRequested(uint64 indexed subscriptionId, address from, address to);
-    event SubscriptionOwnerTransferred(uint64 indexed subscriptionId, address from, address to);
+    event SubscriptionFunded(
+        uint64 indexed subscriptionId,
+        uint256 oldBalance,
+        uint256 newBalance
+    );
+    event SubscriptionConsumerAdded(
+        uint64 indexed subscriptionId,
+        address consumer
+    );
+    event SubscriptionConsumerRemoved(
+        uint64 indexed subscriptionId,
+        address consumer
+    );
+    event SubscriptionCanceled(
+        uint64 indexed subscriptionId,
+        address to,
+        uint256 amount
+    );
+    event SubscriptionOwnerTransferRequested(
+        uint64 indexed subscriptionId,
+        address from,
+        address to
+    );
+    event SubscriptionOwnerTransferred(
+        uint64 indexed subscriptionId,
+        address from,
+        address to
+    );
 
     error GasLimitTooBig(uint32 have, uint32 want);
     error InvalidLinkWeiPrice(int256 linkWei);
     error PaymentTooLarge();
     error Reentrant();
 
-    mapping(address => uint96) /* oracle node */ /* LINK balance */ private s_withdrawableTokens;
+    mapping(address => uint96) /* oracle node */ /* LINK balance */
+        private s_withdrawableTokens;
 
     struct Commitment {
         uint64 subscriptionId;
@@ -109,7 +139,8 @@ contract FunctionsBillingRegistry is
         uint256 timestamp;
     }
 
-    mapping(bytes32 => Commitment) /* requestID */ /* Commitment */ private s_requestCommitments;
+    mapping(bytes32 => Commitment) /* requestID */ /* Commitment */
+        private s_requestCommitments;
 
     event BillingStart(bytes32 indexed requestId, Commitment commitment);
 
@@ -160,7 +191,11 @@ contract FunctionsBillingRegistry is
     /**
      * @dev Initializes the contract.
      */
-    function initialize(address link, address linkEthFeed, address oracle) public initializer {
+    function initialize(
+        address link,
+        address linkEthFeed,
+        address oracle
+    ) public initializer {
         __Pausable_init();
         __ConfirmedOwner_initialize(msg.sender, address(0));
         LINK = LinkTokenInterface(link);
@@ -197,7 +232,13 @@ contract FunctionsBillingRegistry is
             requestTimeoutSeconds: requestTimeoutSeconds
         });
         s_fallbackWeiPerUnitLink = fallbackWeiPerUnitLink;
-        emit ConfigSet(maxGasLimit, stalenessSeconds, gasAfterPaymentCalculation, fallbackWeiPerUnitLink, gasOverhead);
+        emit ConfigSet(
+            maxGasLimit,
+            stalenessSeconds,
+            gasAfterPaymentCalculation,
+            fallbackWeiPerUnitLink,
+            gasOverhead
+        );
     }
 
     /**
@@ -280,7 +321,12 @@ contract FunctionsBillingRegistry is
     /**
      * @inheritdoc FunctionsBillingRegistryInterface
      */
-    function getRequestConfig() external view override returns (uint32, address[] memory) {
+    function getRequestConfig()
+        external
+        view
+        override
+        returns (uint32, address[] memory)
+    {
         return (s_config.maxGasLimit, getAuthorizedSenders());
     }
 
@@ -288,7 +334,7 @@ contract FunctionsBillingRegistry is
      * @inheritdoc FunctionsBillingRegistryInterface
      */
     function getRequiredFee(
-        bytes calldata, /* data */
+        bytes calldata /* data */,
         FunctionsBillingRegistryInterface.RequestBilling memory /* billing */
     ) public pure override returns (uint96) {
         // NOTE: Optionally, compute additional fee here
@@ -298,20 +344,23 @@ contract FunctionsBillingRegistry is
     /**
      * @inheritdoc FunctionsBillingRegistryInterface
      */
-    function estimateCost(uint32 gasLimit, uint256 gasPrice, uint96 donFee, uint96 registryFee)
-        public
-        view
-        override
-        returns (uint96)
-    {
+    function estimateCost(
+        uint32 gasLimit,
+        uint256 gasPrice,
+        uint96 donFee,
+        uint96 registryFee
+    ) public view override returns (uint96) {
         int256 weiPerUnitLink;
         weiPerUnitLink = getFeedData();
         if (weiPerUnitLink <= 0) {
             revert InvalidLinkWeiPrice(weiPerUnitLink);
         }
-        uint256 executionGas = s_config.gasOverhead + s_config.gasAfterPaymentCalculation + gasLimit;
+        uint256 executionGas = s_config.gasOverhead +
+            s_config.gasAfterPaymentCalculation +
+            gasLimit;
         // (1e18 juels/link) (wei/gas * gas) / (wei/link) = juels
-        uint256 paymentNoFee = (1e18 * gasPrice * executionGas) / uint256(weiPerUnitLink);
+        uint256 paymentNoFee = (1e18 * gasPrice * executionGas) /
+            uint256(weiPerUnitLink);
         uint256 fee = uint256(donFee) + uint256(registryFee);
         if (paymentNoFee > (1e27 - fee)) {
             revert PaymentTooLarge(); // Payment + fee cannot be more than all of the link in existence.
@@ -322,7 +371,10 @@ contract FunctionsBillingRegistry is
     /**
      * @inheritdoc FunctionsBillingRegistryInterface
      */
-    function startBilling(bytes calldata data, RequestBilling calldata billing)
+    function startBilling(
+        bytes calldata data,
+        RequestBilling calldata billing
+    )
         external
         override
         validateAuthorizedSender
@@ -337,7 +389,9 @@ contract FunctionsBillingRegistry is
         // It's important to ensure that the consumer is in fact who they say they
         // are, otherwise they could use someone else's subscription balance.
         // A nonce of 0 indicates consumer is not allocated to the sub.
-        uint64 currentNonce = s_consumers[billing.client][billing.subscriptionId];
+        uint64 currentNonce = s_consumers[billing.client][
+            billing.subscriptionId
+        ];
         if (currentNonce == 0) {
             revert InvalidConsumer(billing.subscriptionId, billing.client);
         }
@@ -348,17 +402,30 @@ contract FunctionsBillingRegistry is
         }
 
         // Check that subscription can afford the estimated cost
-        uint96 oracleFee = FunctionsOracleInterface(msg.sender).getRequiredFee(data, billing);
+        uint96 oracleFee = FunctionsOracleInterface(msg.sender).getRequiredFee(
+            data,
+            billing
+        );
         uint96 registryFee = getRequiredFee(data, billing);
-        uint96 estimatedCost = estimateCost(billing.gasLimit, billing.gasPrice, oracleFee, registryFee);
-        uint96 effectiveBalance =
-            s_subscriptions[billing.subscriptionId].balance - s_subscriptions[billing.subscriptionId].blockedBalance;
+        uint96 estimatedCost = estimateCost(
+            billing.gasLimit,
+            billing.gasPrice,
+            oracleFee,
+            registryFee
+        );
+        uint96 effectiveBalance = s_subscriptions[billing.subscriptionId]
+            .balance - s_subscriptions[billing.subscriptionId].blockedBalance;
         if (effectiveBalance < estimatedCost) {
             revert InsufficientBalance();
         }
 
         uint64 nonce = currentNonce + 1;
-        bytes32 requestId = computeRequestId(msg.sender, billing.client, billing.subscriptionId, nonce);
+        bytes32 requestId = computeRequestId(
+            msg.sender,
+            billing.client,
+            billing.subscriptionId,
+            nonce
+        );
 
         Commitment memory commitment = Commitment(
             billing.subscriptionId,
@@ -379,11 +446,12 @@ contract FunctionsBillingRegistry is
         return requestId;
     }
 
-    function computeRequestId(address don, address client, uint64 subscriptionId, uint64 nonce)
-        private
-        pure
-        returns (bytes32)
-    {
+    function computeRequestId(
+        address don,
+        address client,
+        uint64 subscriptionId,
+        uint64 nonce
+    ) private pure returns (bytes32) {
         return keccak256(abi.encode(don, client, subscriptionId, nonce));
     }
 
@@ -391,7 +459,11 @@ contract FunctionsBillingRegistry is
      * @dev calls target address with exactly gasAmount gas and data as calldata
      * or reverts if at least gasAmount gas is not available.
      */
-    function callWithExactGas(uint256 gasAmount, address target, bytes memory data) private returns (bool success) {
+    function callWithExactGas(
+        uint256 gasAmount,
+        address target,
+        bytes memory data
+    ) private returns (bool success) {
         // solhint-disable-next-line no-inline-assembly
         assembly {
             let g := gas()
@@ -402,16 +474,30 @@ contract FunctionsBillingRegistry is
             // as we do not want to provide them with less, however that check itself costs
             // gas.  GAS_FOR_CALL_EXACT_CHECK ensures we have at least enough gas to be able
             // to revert if gasAmount >  63//64*gas available.
-            if lt(g, 5000) { revert(0, 0) }
+            if lt(g, 5000) {
+                revert(0, 0)
+            }
             g := sub(g, 5000)
             // if g - g//64 <= gasAmount, revert
             // (we subtract g//64 because of EIP-150)
-            if iszero(gt(sub(g, div(g, 64)), gasAmount)) { revert(0, 0) }
+            if iszero(gt(sub(g, div(g, 64)), gasAmount)) {
+                revert(0, 0)
+            }
             // solidity calls check that a contract actually exists at the destination, so we do the same
-            if iszero(extcodesize(target)) { revert(0, 0) }
+            if iszero(extcodesize(target)) {
+                revert(0, 0)
+            }
             // call and return whether we succeeded. ignore return data
             // call(gas,addr,value,argsOffset,argsLength,retOffset,retLength)
-            success := call(gasAmount, target, 0, add(data, 0x20), mload(data), 0, 0)
+            success := call(
+                gasAmount,
+                target,
+                0,
+                add(data, 0x20),
+                mload(data),
+                0,
+                0
+            )
         }
         return success;
     }
@@ -428,15 +514,26 @@ contract FunctionsBillingRegistry is
         uint8 signerCount,
         uint256 reportValidationGas,
         uint256 initialGas
-    ) external override validateAuthorizedSender nonReentrant whenNotPaused returns (FulfillResult) {
+    )
+        external
+        override
+        validateAuthorizedSender
+        nonReentrant
+        whenNotPaused
+        returns (FulfillResult)
+    {
         Commitment memory commitment = s_requestCommitments[requestId];
         if (commitment.don == address(0)) {
             return FulfillResult.INVALID_REQUEST_ID;
         }
         delete s_requestCommitments[requestId];
 
-        bytes memory callback =
-            abi.encodeWithSelector(FunctionsClientInterface.handleOracleFulfillment.selector, requestId, response, err);
+        bytes memory callback = abi.encodeWithSelector(
+            FunctionsClientInterface.handleOracleFulfillment.selector,
+            requestId,
+            response,
+            err
+        );
         // Call with explicitly the amount of callback gas requested
         // Important to not let them exhaust the gas budget and avoid payment.
         // Do not allow any non-view/non-pure coordinator functions to be called
@@ -444,7 +541,11 @@ contract FunctionsBillingRegistry is
         // NOTE: that callWithExactGas will revert if we do not have sufficient gas
         // to give the callee their requested amount.
         s_config.reentrancyLock = true;
-        bool success = callWithExactGas(commitment.gasLimit, commitment.client, callback);
+        bool success = callWithExactGas(
+            commitment.gasLimit,
+            commitment.client,
+            callback
+        );
         s_config.reentrancyLock = false;
 
         // We want to charge users exactly for how much gas they use in their callback.
@@ -459,7 +560,9 @@ contract FunctionsBillingRegistry is
             reportValidationGas,
             tx.gasprice
         );
-        if (s_subscriptions[commitment.subscriptionId].balance < bill.totalCost) {
+        if (
+            s_subscriptions[commitment.subscriptionId].balance < bill.totalCost
+        ) {
             revert InsufficientBalance();
         }
         s_subscriptions[commitment.subscriptionId].balance -= bill.totalCost;
@@ -472,10 +575,16 @@ contract FunctionsBillingRegistry is
         // Reimburse the transmitter for the execution gas cost + pay them their portion of the DON fee
         s_withdrawableTokens[transmitter] += bill.transmitterPayment;
         // Remove blocked balance
-        s_subscriptions[commitment.subscriptionId].blockedBalance -= commitment.estimatedCost;
+        s_subscriptions[commitment.subscriptionId].blockedBalance -= commitment
+            .estimatedCost;
         // Include payment in the event for tracking costs.
         emit BillingEnd(
-            requestId, commitment.subscriptionId, bill.signerPayment, bill.transmitterPayment, bill.totalCost, success
+            requestId,
+            commitment.subscriptionId,
+            bill.signerPayment,
+            bill.transmitterPayment,
+            bill.totalCost,
+            success
         );
         return success ? FulfillResult.USER_SUCCESS : FulfillResult.USER_ERROR;
     }
@@ -496,9 +605,12 @@ contract FunctionsBillingRegistry is
             revert InvalidLinkWeiPrice(weiPerUnitLink);
         }
         // (1e18 juels/link) (wei/gas * gas) / (wei/link) = juels
-        uint256 paymentNoFee = (
-            1e18 * weiPerUnitGas * (reportValidationGas + gasAfterPaymentCalculation + startGas - gasleft())
-        ) / uint256(weiPerUnitLink);
+        uint256 paymentNoFee = (1e18 *
+            weiPerUnitGas *
+            (reportValidationGas +
+                gasAfterPaymentCalculation +
+                startGas -
+                gasleft())) / uint256(weiPerUnitLink);
         uint256 fee = uint256(donFee) + uint256(registryFee);
         if (paymentNoFee > (1e27 - fee)) {
             revert PaymentTooLarge(); // Payment + fee cannot be more than all of the link in existence.
@@ -512,7 +624,8 @@ contract FunctionsBillingRegistry is
     function getFeedData() private view returns (int256) {
         uint32 stalenessSeconds = s_config.stalenessSeconds;
         bool staleFallback = stalenessSeconds > 0;
-        (, int256 weiPerUnitLink,, uint256 timestamp,) = LINK_ETH_FEED.latestRoundData();
+        (, int256 weiPerUnitLink, , uint256 timestamp, ) = LINK_ETH_FEED
+            .latestRoundData();
         // solhint-disable-next-line not-rely-on-time
         if (staleFallback && stalenessSeconds < block.timestamp - timestamp) {
             weiPerUnitLink = s_fallbackWeiPerUnitLink;
@@ -521,13 +634,16 @@ contract FunctionsBillingRegistry is
     }
 
     /*
-    * @notice Oracle withdraw LINK earned through fulfilling requests
-    * @notice If amount is 0 the full balance will be withdrawn
-    * @notice Both signing and transmitting wallets will have a balance to withdraw
-    * @param recipient where to send the funds
-    * @param amount amount to withdraw
-    */
-    function oracleWithdraw(address recipient, uint96 amount) external nonReentrant whenNotPaused {
+     * @notice Oracle withdraw LINK earned through fulfilling requests
+     * @notice If amount is 0 the full balance will be withdrawn
+     * @notice Both signing and transmitting wallets will have a balance to withdraw
+     * @param recipient where to send the funds
+     * @param amount amount to withdraw
+     */
+    function oracleWithdraw(
+        address recipient,
+        uint96 amount
+    ) external nonReentrant whenNotPaused {
         if (amount == 0) {
             amount = s_withdrawableTokens[msg.sender];
         }
@@ -541,12 +657,11 @@ contract FunctionsBillingRegistry is
         }
     }
 
-    function onTokenTransfer(address, /* sender */ uint256 amount, bytes calldata data)
-        external
-        override
-        nonReentrant
-        whenNotPaused
-    {
+    function onTokenTransfer(
+        address,
+        /* sender */ uint256 amount,
+        bytes calldata data
+    ) external override nonReentrant whenNotPaused {
         if (msg.sender != address(LINK)) {
             revert OnlyCallableFromLink();
         }
@@ -562,7 +677,11 @@ contract FunctionsBillingRegistry is
         uint256 oldBalance = s_subscriptions[subscriptionId].balance;
         s_subscriptions[subscriptionId].balance += uint96(amount);
         s_totalBalance += uint96(amount);
-        emit SubscriptionFunded(subscriptionId, oldBalance, oldBalance + amount);
+        emit SubscriptionFunded(
+            subscriptionId,
+            oldBalance,
+            oldBalance + amount
+        );
     }
 
     function getCurrentsubscriptionId() external view returns (uint64) {
@@ -576,7 +695,9 @@ contract FunctionsBillingRegistry is
      * @return owner - owner of the subscription.
      * @return consumers - list of consumer address which are able to use this subscription.
      */
-    function getSubscription(uint64 subscriptionId)
+    function getSubscription(
+        uint64 subscriptionId
+    )
         external
         view
         returns (uint96 balance, address owner, address[] memory consumers)
@@ -601,13 +722,25 @@ contract FunctionsBillingRegistry is
      * @dev    amount,
      * @dev    abi.encode(subscriptionId));
      */
-    function createSubscription() external nonReentrant whenNotPaused onlyAuthorizedUsers returns (uint64) {
+    function createSubscription()
+        external
+        nonReentrant
+        whenNotPaused
+        onlyAuthorizedUsers
+        returns (uint64)
+    {
         s_currentsubscriptionId++;
         uint64 currentsubscriptionId = s_currentsubscriptionId;
         address[] memory consumers = new address[](0);
-        s_subscriptions[currentsubscriptionId] = Subscription({balance: 0, blockedBalance: 0});
-        s_subscriptionConfigs[currentsubscriptionId] =
-            SubscriptionConfig({owner: msg.sender, requestedOwner: address(0), consumers: consumers});
+        s_subscriptions[currentsubscriptionId] = Subscription({
+            balance: 0,
+            blockedBalance: 0
+        });
+        s_subscriptionConfigs[currentsubscriptionId] = SubscriptionConfig({
+            owner: msg.sender,
+            requestedOwner: address(0),
+            consumers: consumers
+        });
 
         emit SubscriptionCreated(currentsubscriptionId, msg.sender);
         return currentsubscriptionId;
@@ -618,7 +751,9 @@ contract FunctionsBillingRegistry is
      * @param subscriptionId - ID of the subscription
      * @return owner - owner of the subscription.
      */
-    function getSubscriptionOwner(uint64 subscriptionId) external view override returns (address owner) {
+    function getSubscriptionOwner(
+        uint64 subscriptionId
+    ) external view override returns (address owner) {
         if (s_subscriptionConfigs[subscriptionId].owner == address(0)) {
             revert InvalidSubscription();
         }
@@ -630,16 +765,18 @@ contract FunctionsBillingRegistry is
      * @param subscriptionId - ID of the subscription
      * @param newOwner - proposed new owner of the subscription
      */
-    function requestSubscriptionOwnerTransfer(uint64 subscriptionId, address newOwner)
-        external
-        onlySubOwner(subscriptionId)
-        nonReentrant
-        whenNotPaused
-    {
+    function requestSubscriptionOwnerTransfer(
+        uint64 subscriptionId,
+        address newOwner
+    ) external onlySubOwner(subscriptionId) nonReentrant whenNotPaused {
         // Proposing to address(0) would never be claimable so don't need to check.
         if (s_subscriptionConfigs[subscriptionId].requestedOwner != newOwner) {
             s_subscriptionConfigs[subscriptionId].requestedOwner = newOwner;
-            emit SubscriptionOwnerTransferRequested(subscriptionId, msg.sender, newOwner);
+            emit SubscriptionOwnerTransferRequested(
+                subscriptionId,
+                msg.sender,
+                newOwner
+            );
         }
     }
 
@@ -649,17 +786,18 @@ contract FunctionsBillingRegistry is
      * @dev will revert if original owner of subscriptionId has
      * not requested that msg.sender become the new owner.
      */
-    function acceptSubscriptionOwnerTransfer(uint64 subscriptionId)
-        external
-        nonReentrant
-        whenNotPaused
-        onlyAuthorizedUsers
-    {
+    function acceptSubscriptionOwnerTransfer(
+        uint64 subscriptionId
+    ) external nonReentrant whenNotPaused onlyAuthorizedUsers {
         if (s_subscriptionConfigs[subscriptionId].owner == address(0)) {
             revert InvalidSubscription();
         }
-        if (s_subscriptionConfigs[subscriptionId].requestedOwner != msg.sender) {
-            revert MustBeRequestedOwner(s_subscriptionConfigs[subscriptionId].requestedOwner);
+        if (
+            s_subscriptionConfigs[subscriptionId].requestedOwner != msg.sender
+        ) {
+            revert MustBeRequestedOwner(
+                s_subscriptionConfigs[subscriptionId].requestedOwner
+            );
         }
         address oldOwner = s_subscriptionConfigs[subscriptionId].owner;
         s_subscriptionConfigs[subscriptionId].owner = msg.sender;
@@ -672,17 +810,16 @@ contract FunctionsBillingRegistry is
      * @param subscriptionId - ID of the subscription
      * @param consumer - Consumer to remove from the subscription
      */
-    function removeConsumer(uint64 subscriptionId, address consumer)
-        external
-        onlySubOwner(subscriptionId)
-        nonReentrant
-        whenNotPaused
-    {
+    function removeConsumer(
+        uint64 subscriptionId,
+        address consumer
+    ) external onlySubOwner(subscriptionId) nonReentrant whenNotPaused {
         if (s_consumers[consumer][subscriptionId] == 0) {
             revert InvalidConsumer(subscriptionId, consumer);
         }
         // Note bounded by MAX_CONSUMERS
-        address[] memory consumers = s_subscriptionConfigs[subscriptionId].consumers;
+        address[] memory consumers = s_subscriptionConfigs[subscriptionId]
+            .consumers;
         uint256 lastConsumerIndex = consumers.length - 1;
         for (uint256 i = 0; i < consumers.length; i++) {
             if (consumers[i] == consumer) {
@@ -703,14 +840,15 @@ contract FunctionsBillingRegistry is
      * @param subscriptionId - ID of the subscription
      * @param consumer - New consumer which can use the subscription
      */
-    function addConsumer(uint64 subscriptionId, address consumer)
-        external
-        onlySubOwner(subscriptionId)
-        nonReentrant
-        whenNotPaused
-    {
+    function addConsumer(
+        uint64 subscriptionId,
+        address consumer
+    ) external onlySubOwner(subscriptionId) nonReentrant whenNotPaused {
         // Already maxed, cannot add any more consumers.
-        if (s_subscriptionConfigs[subscriptionId].consumers.length == MAX_CONSUMERS) {
+        if (
+            s_subscriptionConfigs[subscriptionId].consumers.length ==
+            MAX_CONSUMERS
+        ) {
             revert TooManyConsumers();
         }
         if (s_consumers[consumer][subscriptionId] != 0) {
@@ -730,20 +868,23 @@ contract FunctionsBillingRegistry is
      * @param subscriptionId - ID of the subscription
      * @param to - Where to send the remaining LINK to
      */
-    function cancelSubscription(uint64 subscriptionId, address to)
-        external
-        onlySubOwner(subscriptionId)
-        nonReentrant
-        whenNotPaused
-    {
+    function cancelSubscription(
+        uint64 subscriptionId,
+        address to
+    ) external onlySubOwner(subscriptionId) nonReentrant whenNotPaused {
         if (pendingRequestExists(subscriptionId)) {
             revert PendingRequestExists();
         }
         cancelSubscriptionHelper(subscriptionId, to);
     }
 
-    function cancelSubscriptionHelper(uint64 subscriptionId, address to) private nonReentrant {
-        SubscriptionConfig memory subConfig = s_subscriptionConfigs[subscriptionId];
+    function cancelSubscriptionHelper(
+        uint64 subscriptionId,
+        address to
+    ) private nonReentrant {
+        SubscriptionConfig memory subConfig = s_subscriptionConfigs[
+            subscriptionId
+        ];
         uint96 balance = s_subscriptions[subscriptionId].balance;
         // Note bounded by MAX_CONSUMERS;
         // If no consumers, does nothing.
@@ -768,13 +909,19 @@ contract FunctionsBillingRegistry is
      * @dev Used to disable subscription canceling while outstanding request are present.
      */
 
-    function pendingRequestExists(uint64 subscriptionId) public view returns (bool) {
-        address[] memory consumers = s_subscriptionConfigs[subscriptionId].consumers;
+    function pendingRequestExists(
+        uint64 subscriptionId
+    ) public view returns (bool) {
+        address[] memory consumers = s_subscriptionConfigs[subscriptionId]
+            .consumers;
         address[] memory authorizedSendersList = getAuthorizedSenders();
         for (uint256 i = 0; i < consumers.length; i++) {
             for (uint256 j = 0; j < authorizedSendersList.length; j++) {
                 bytes32 requestId = computeRequestId(
-                    authorizedSendersList[j], consumers[i], subscriptionId, s_consumers[consumers[i]][subscriptionId]
+                    authorizedSendersList[j],
+                    consumers[i],
+                    subscriptionId,
+                    s_consumers[consumers[i]][subscriptionId]
                 );
                 if (s_requestCommitments[requestId].don != address(0)) {
                     return true;
@@ -789,19 +936,30 @@ contract FunctionsBillingRegistry is
      * @param requestIdsToTimeout - A list of request IDs to time out
      */
 
-    function timeoutRequests(bytes32[] calldata requestIdsToTimeout) external whenNotPaused {
+    function timeoutRequests(
+        bytes32[] calldata requestIdsToTimeout
+    ) external whenNotPaused {
         for (uint256 i = 0; i < requestIdsToTimeout.length; i++) {
             bytes32 requestId = requestIdsToTimeout[i];
             Commitment memory commitment = s_requestCommitments[requestId];
 
             // Check that the message sender is the subscription owner
-            if (msg.sender != s_subscriptionConfigs[commitment.subscriptionId].owner) {
-                revert MustBeSubOwner(s_subscriptionConfigs[commitment.subscriptionId].owner);
+            if (
+                msg.sender !=
+                s_subscriptionConfigs[commitment.subscriptionId].owner
+            ) {
+                revert MustBeSubOwner(
+                    s_subscriptionConfigs[commitment.subscriptionId].owner
+                );
             }
 
-            if (commitment.timestamp + s_config.requestTimeoutSeconds > block.timestamp) {
+            if (
+                commitment.timestamp + s_config.requestTimeoutSeconds >
+                block.timestamp
+            ) {
                 // Decrement blocked balance
-                s_subscriptions[commitment.subscriptionId].blockedBalance -= commitment.estimatedCost;
+                s_subscriptions[commitment.subscriptionId]
+                    .blockedBalance -= commitment.estimatedCost;
                 // Delete commitment
                 delete s_requestCommitments[requestId];
                 emit RequestTimedOut(requestId);
@@ -813,7 +971,10 @@ contract FunctionsBillingRegistry is
      * @dev The allow list is kept on the Oracle contract. This modifier checks if a user is authorized from there.
      */
     modifier onlyAuthorizedUsers() {
-        if (ORACLE_WITH_ALLOWLIST.authorizedReceiverActive() && !ORACLE_WITH_ALLOWLIST.isAuthorizedSender(msg.sender)) {
+        if (
+            ORACLE_WITH_ALLOWLIST.authorizedReceiverActive() &&
+            !ORACLE_WITH_ALLOWLIST.isAuthorizedSender(msg.sender)
+        ) {
             revert UnauthorizedSender();
         }
         _;
@@ -837,7 +998,13 @@ contract FunctionsBillingRegistry is
         _;
     }
 
-    function _canSetAuthorizedSenders() internal view override onlyOwner returns (bool) {
+    function _canSetAuthorizedSenders()
+        internal
+        view
+        override
+        onlyOwner
+        returns (bool)
+    {
         return true;
     }
 

@@ -1,0 +1,35 @@
+{
+  "transactions": [
+    {
+      "hash": "0xef47033b093ff6de93c7bcc02323fd446b75db4700da2fc472b79a57ff7260d8",
+      "transactionType": "CALL",
+      "contractName": null,
+      "contractAddress": null,
+      "function": null,
+      "arguments": null,
+      "rpc": "https://eth-sepolia.g.alchemy.com/v2/JxNFqbMidPa4MEa-8ZwtZx_6NdyzdOHH",
+      "transaction": {
+        "type": "0x02",
+        "from": "0xfd7059cf48ef2417a1b6eeac9a77b6ca2d94a34e",
+        "to": "0x8067caeeed53e236a977df5233d864e7565996d3",
+        "value": "0x0",
+        "data": "0x8dc654a2",
+        "nonce": "0x2d4",
+        "accessList": []
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    }
+  ],
+  "receipts": [],
+  "libraries": [],
+  "pending": [
+    "0xef47033b093ff6de93c7bcc02323fd446b75db4700da2fc472b79a57ff7260d8"
+  ],
+  "path": "/home/maroutis/simple-stable/broadcast/deployTestApicopy.sol/11155111/run-latest.json",
+  "returns": {},
+  "timestamp": 1686963291,
+  "chain": 11155111,
+  "multi": false,
+  "commit": "b4e51d6"
+}

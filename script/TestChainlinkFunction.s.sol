@@ -12,8 +12,8 @@ import {IERC1363} from "lib/openzeppelin-contracts/contracts/interfaces/IERC1363
 
 // Sepolia
 contract TestChainlinkFunction is Script {
-    uint256 deployerPrivateKey = vm.envUint("DEPLOYER_CF_PRIVATE_KEY");
-    address deployerAddress = vm.envAddress("DEPLOYER_CF_ADDRESS");
+    uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
+    address deployerAddress = vm.envAddress("DEPLOYER_ADDRESS");
 
     function run() external {
         vm.startBroadcast(deployerPrivateKey);
@@ -30,23 +30,30 @@ contract TestChainlinkFunction is Script {
 
         WeightProvider weightProvider = new WeightProvider(
             functionsOracleProxyAddress,
-            address(1111),
+            0x4367f2Bf724440df577cfc4349Edd72c9d9358a0,
             wethAddress
         );
         address weightProviderAddress = address(weightProvider);
 
-        FunctionsBillingRegistry registry = FunctionsBillingRegistry(registryProxyAddress);
+        FunctionsBillingRegistry registry = FunctionsBillingRegistry(
+            registryProxyAddress
+        );
         uint64 subId = registry.createSubscription();
 
         IERC1363 linkToken = IERC1363(linkTokenAddress);
 
         console.log(linkToken.balanceOf(deployerAddress));
 
-        linkToken.transferAndCall(deployerAddress, 10 ether, abi.encodePacked(subId));
         console.log(subId);
         registry.addConsumer(subId, weightProviderAddress);
         weightProvider.setSubId(subId);
-        weightProvider.executeRequest{gas: 1000000}();
+        linkToken.transferAndCall(
+            registryProxyAddress,
+            10 ** 18,
+            abi.encode(subId)
+        );
+        console.log(linkToken.balanceOf(registryProxyAddress));
+        weightProvider.executeRequest{gas: 0.01 ether}();
 
         vm.stopBroadcast();
     }

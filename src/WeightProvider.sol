@@ -6,12 +6,16 @@ import {Ownable} from "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {IWeightProvider} from "./IWeightProvider.sol";
 import {INotary} from "./INotary.sol";
 import {Portfolio} from "./Portfolio.sol";
+import "forge-std/Script.sol";
 
 /**
- * @dev Notary contract registers and authenticates Positions.
- *
- * This contract allows users to open positions, which can be verified
- * during the minting of the stablecoin.
+ * @title This contract is responsible for updating the portfolio using an API
+ * @notice this calls the chainlink function that executes a requests
+ * @dev the API requests updates the weights
+ * The update portfolio function is then triggered
+ * Right now, only 1 weight is recovered from the API. This allow to update 2 tokens
+ * In futur versions, the objective will be to recover an array (> 2) of weights +
+ * other arrays (tokens, pricefeeds, ...)
  */
 contract WeightProvider is Ownable, IWeightProvider, FunctionsClient {
     using Functions for Functions.Request;
@@ -22,10 +26,14 @@ contract WeightProvider is Ownable, IWeightProvider, FunctionsClient {
     uint64 subId;
     address wethAddress;
     uint24 poolFee = 3000;
-    uint32 functionsGasLimit = 500_000;
+    uint32 functionsGasLimit = 300_000;
     uint256 mostRecentWeight;
 
-    constructor(address _oracleAddress, address _notaryAddress, address _wethAddress) FunctionsClient(_oracleAddress) {
+    constructor(
+        address _oracleAddress,
+        address _notaryAddress,
+        address _wethAddress
+    ) FunctionsClient(_oracleAddress) {
         notary = INotary(_notaryAddress);
         wethAddress = _wethAddress;
     }
@@ -41,7 +49,11 @@ contract WeightProvider is Ownable, IWeightProvider, FunctionsClient {
     function executeRequest() external override returns (bytes32) {
         require(subId != 0, "Subscription ID must be set before redeeming");
         Functions.Request memory req;
-        req.initializeRequest(Functions.Location.Inline, Functions.CodeLanguage.JavaScript, source);
+        req.initializeRequest(
+            Functions.Location.Inline,
+            Functions.CodeLanguage.JavaScript,
+            source
+        );
         return sendRequest(req, subId, functionsGasLimit);
     }
 
@@ -52,13 +64,18 @@ contract WeightProvider is Ownable, IWeightProvider, FunctionsClient {
      * @param err Aggregated error from the user code or from the execution pipeline
      * Either response or error parameter will be set, but never both
      */
-    function fulfillRequest(bytes32 requestId, bytes memory response, bytes memory err) internal override {
+    function fulfillRequest(
+        bytes32 requestId,
+        bytes memory response,
+        bytes memory err
+    ) internal override {
         uint256 weight = uint256(bytes32(response));
         uint256[] memory weights;
         Portfolio portfolio = Portfolio(notary.getPortfolioAddress());
         weights[0] = weight;
         weights[1] = 1 - weight;
         mostRecentWeight = weight;
+        console.log(weight);
         portfolio.updateWeights(weights);
         // portfolio.updateAssets(_assetsAddress, _targetWeights, _decimals, _priceFeeds, _baseCurrencies);
         notary.updatePortfolio();
